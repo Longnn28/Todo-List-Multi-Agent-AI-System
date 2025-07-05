@@ -1,0 +1,16 @@
+# Core LangChain packages
+langchain
+langchain-community
+langchain-google-genai
+langchain-pinecone
+
+# Document loaders
+pypdf
+pymupdf
+unstructured[docx,pptx]
+pytesseract
+python-docx
+
+# Utility packages
+numpy
+python-dotenv
