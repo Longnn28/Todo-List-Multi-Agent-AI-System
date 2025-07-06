@@ -1,15 +1,16 @@
 # Core LangChain packages
 langchain
 langchain-community
-langchain-google-genai
+#langchain-google-genai
 langchain-pinecone
+langchain-huggingface 
+sentence-transformers
 
 # Document loaders
-pypdf
 pymupdf
-unstructured[docx,pptx]
-pytesseract
 python-docx
+unstructured[docx,pptx]
+pydantic
 
 # Utility packages
 numpy
