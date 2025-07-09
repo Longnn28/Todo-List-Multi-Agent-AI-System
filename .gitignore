@@ -1,4 +1,6 @@
 .env
 data/
 __pycache__/
-test.py
+test_multi_file.py
+test_memory.py
+multiagent_workflow_diagram.mermaid
