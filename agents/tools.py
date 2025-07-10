@@ -3,19 +3,17 @@ from pydantic import Field, BaseModel
 from geopy.geocoders import Nominatim
 import requests
 from datetime import datetime
-from datetime import datetime
 from typing import Optional, List
 from sqlalchemy.orm import Session
 from config.database import get_db, TodoItem, SessionLocal
-from config.vector_store import VectorStoreCRUD
+from config.vector_store import vector_store_crud
 from langchain_tavily import TavilySearch
 
-
-class SearchInput(BaseModel):
+class WeatherInput(BaseModel):
     """Input for the search tool."""
     location: str = Field(description="The city to search for weather information")
-    date: str = Field(description="The date for the weather forecast in YYYY-MM-DD format")
-
+    #date: str = Field(description="The date for the weather forecast in YYYY-MM-DD format")
+    date: str = Field(description="The date for the forecast. Can be a specific date like '2025-07-12' or relative like 'today', 'tomorrow', or 'in 2 days'. Defaults to today if not specified.")
 class TodoInput(BaseModel):
     """Input for todo operations."""
     title: str = Field(description="Title of the todo item")
@@ -42,14 +40,13 @@ class TavilySearchInput(BaseModel):
     max_results: Optional[int] = Field(default=3, description="Maximum number of search results")
 
 geolocator = Nominatim(user_agent="weather_tool")
-vector_store = VectorStoreCRUD()
 
 @tool
-def get_weather(input: SearchInput) -> str:
+def get_weather(input: WeatherInput) -> str:
     """Get the weather forecast for a given location and date."""
     location = input.location
     date = input.date
-
+    
     location = geolocator.geocode(location)
     if location:
         try:
@@ -67,7 +64,8 @@ def rag_retrieve(input: RAGInput) -> str:
     """Retrieve relevant information from the school knowledge base."""
     try:
         import asyncio
-        docs = asyncio.run(vector_store.search(input.query))
+        # docs = asyncio.run(vector_store.search(input.query))
+        docs = asyncio.run(vector_store_crud.search(input.query))
         if docs:
             context = "\n\n".join([f"Source: {doc.metadata.get('source_file', 'Unknown')}\nContent: {doc.page_content}" for doc in docs])
             return context
@@ -81,17 +79,12 @@ def tavily_search(input: TavilySearchInput) -> str:
     """Search the web using Tavily for current information."""
     try:
         tavily_tool = TavilySearch(max_results=input.max_results)
-        results = tavily_tool.invoke({"query": input.query})
+        tool_msg = tavily_tool.invoke({"query": input.query})
         
-        if results:
+        if tool_msg:
             formatted_results = []
-            for i, result in enumerate(results, 1):
-                formatted_results.append(f"""
-                    Result {i}:
-                    Title: {result.get('title', 'N/A')}
-                    URL: {result.get('url', 'N/A')}
-                    Content: {result.get('content', 'N/A')[:300]}...
-                    """)
+            for i, res in enumerate(tool_msg["results"], 1):
+                formatted_results.append(f"""\nResult {i}:\nTitle: {res.get('title', 'N/A')}\nURL: {res.get('url', 'N/A')}\nContent: {res.get('content', 'N/A')[:300]}...""")
             return "\n".join(formatted_results)
         else:
             return "No search results found."

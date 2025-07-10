@@ -18,13 +18,21 @@ class AgentState(TypedDict):
 def router_node(state: AgentState) -> AgentState:
     """Router agent to decide which agent should handle the request."""
     # Lấy user input từ message cuối cùng
-    #user_input = state["messages"][-1].content
-
-    user_input = state["user_input"]
+    user_input = state["messages"][-1].content
+    
+    # Tạo chat history từ tất cả messages
+    chat_history = ""
+    for msg in state["messages"]:
+        role = "User" if isinstance(msg, HumanMessage) else "Assistant"
+        chat_history += f"{role}: {msg.content}\n"
+    
     router_prompt = ChatPromptTemplate.from_template(ROUTER_PROMPT)
     router_chain = router_prompt | llm
 
-    response = router_chain.invoke({"user_input": user_input})
+    response = router_chain.invoke({
+        "user_input": user_input,
+        "chat_history": chat_history
+    })
     
     # Extract the route decision from the response
     route_decision = response.content.strip().lower()
@@ -42,8 +50,8 @@ def router_node(state: AgentState) -> AgentState:
     
     return {
         **state,
-        "route_decision": route_decision,
-        "messages": [AIMessage(content=f"Routing to: {route_decision}")],
+        "route_decision": route_decision
+        #"messages": [AIMessage(content=f"Routing to: {route_decision}")],
     }
 
 def create_rag_agent():
@@ -140,7 +148,7 @@ def create_graph():
     graph.add_edge("schedule_agent", END)
     graph.add_edge("generic_agent", END)
     
-    return graph.compile(checkpointer=InMemorySaver())
+    return graph.compile()
 
 # Create the compiled graph
 multi_agent_graph = create_graph()
