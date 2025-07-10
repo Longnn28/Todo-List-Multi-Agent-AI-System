@@ -12,8 +12,8 @@ from langchain_tavily import TavilySearch
 class WeatherInput(BaseModel):
     """Input for the search tool."""
     location: str = Field(description="The city to search for weather information")
-    #date: str = Field(description="The date for the weather forecast in YYYY-MM-DD format")
-    date: str = Field(description="The date for the forecast. Can be a specific date like '2025-07-12' or relative like 'today', 'tomorrow', or 'in 2 days'. Defaults to today if not specified.")
+    date: str = Field(description="The date for the weather forecast in YYYY-MM-DD format")
+    
 class TodoInput(BaseModel):
     """Input for todo operations."""
     title: str = Field(description="Title of the todo item")
@@ -46,7 +46,7 @@ def get_weather(input: WeatherInput) -> str:
     """Get the weather forecast for a given location and date."""
     location = input.location
     date = input.date
-    
+
     location = geolocator.geocode(location)
     if location:
         try:
