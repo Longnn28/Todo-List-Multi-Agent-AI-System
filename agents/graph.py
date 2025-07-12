@@ -6,13 +6,18 @@ from typing import TypedDict, List, Annotated, Sequence
 from langgraph.checkpoint.memory import InMemorySaver
 from langchain_core.prompts import ChatPromptTemplate
 from config.llm import llm
-from agents.prompts import ROUTER_PROMPT, RAG_AGENT_PROMPT, SCHEDULE_AGENT_PROMPT, GENERIC_AGENT_PROMPT
+from langgraph.checkpoint.postgres import PostgresSaver
+from psycopg import Connection
+from agents.prompts import ROUTER_PROMPT, RAG_AGENT_PROMPT, SCHEDULE_AGENT_PROMPT, GENERIC_AGENT_PROMPT, FBOT_SYSTEM_PROMPT
 from agents.tools import rag_retrieve, create_todo, get_todos, update_todo, delete_todo, get_weather, tavily_search
+from datetime import datetime
+from dotenv import load_dotenv
+import os
+load_dotenv()
 
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
     route_decision: str
-    user_input: str
     response: str
 
 def router_node(state: AgentState) -> AgentState:
@@ -57,17 +62,26 @@ def router_node(state: AgentState) -> AgentState:
 def create_rag_agent():
     """Create RAG agent using create_react_agent."""
     tools = [rag_retrieve]
-    return create_react_agent(llm, tools, prompt=RAG_AGENT_PROMPT)
+    # Format prompt with current datetime
+    current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    formatted_prompt = RAG_AGENT_PROMPT.format(current_datetime=current_datetime)
+    return create_react_agent(llm, tools, prompt=formatted_prompt)
 
 def create_schedule_agent():
     """Create Schedule agent using create_react_agent."""
     tools = [create_todo, get_todos, update_todo, delete_todo]
-    return create_react_agent(llm, tools, prompt=SCHEDULE_AGENT_PROMPT)
+    # Format prompt with current datetime
+    current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    formatted_prompt = SCHEDULE_AGENT_PROMPT.format(current_datetime=current_datetime)
+    return create_react_agent(llm, tools, prompt=formatted_prompt)
 
 def create_generic_agent():
     """Create Generic agent using create_react_agent."""
     tools = [get_weather, tavily_search]
-    return create_react_agent(llm, tools, prompt=GENERIC_AGENT_PROMPT)
+    # Format prompt with current datetime
+    current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    formatted_prompt = GENERIC_AGENT_PROMPT.format(current_datetime=current_datetime)
+    return create_react_agent(llm, tools, prompt=formatted_prompt)
 
 # Create agent instances
 rag_agent = create_rag_agent()
@@ -119,7 +133,7 @@ def route_to_agent(state: AgentState) -> str:
     return route_decision
 
 # Create the graph
-def create_graph():
+def create_graph(checkpointer: PostgresSaver = None) -> StateGraph:
     """Create the multi-agent workflow graph."""
     graph = StateGraph(AgentState)
     
@@ -150,5 +164,14 @@ def create_graph():
     
     return graph.compile()
 
-# Create the compiled graph
-multi_agent_graph = create_graph()
+DB_URI = os.getenv("DB_URI")
+
+connection_kwargs = {
+    "autocommit": True,
+    "prepare_threshold": 0,
+}
+
+conn = Connection.connect(DB_URI, **connection_kwargs)
+checkpointer = PostgresSaver(conn)
+#checkpointer.setup()
+multi_agent_graph = create_graph(checkpointer)

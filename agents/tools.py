@@ -10,10 +10,10 @@ from config.vector_store import vector_store_crud
 from langchain_tavily import TavilySearch
 
 class WeatherInput(BaseModel):
-    """Input for the search tool."""
+    """Input for the weather tool."""
     location: str = Field(description="The city to search for weather information")
     date: str = Field(description="The date for the weather forecast in YYYY-MM-DD format")
-    
+
 class TodoInput(BaseModel):
     """Input for todo operations."""
     title: str = Field(description="Title of the todo item")

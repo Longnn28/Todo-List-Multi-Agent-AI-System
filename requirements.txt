@@ -15,6 +15,7 @@ unstructured[docx,pptx]
 pydantic
 
 # Database
+langgraph-checkpoint-postgres
 sqlalchemy
 psycopg2-binary
 alembic
@@ -24,7 +25,6 @@ geopy
 requests
 
 # Utility packages
-numpy
 python-dotenv
 
 # Apis

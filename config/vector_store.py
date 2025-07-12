@@ -1,6 +1,6 @@
 from langchain_pinecone import PineconeVectorStore
 from langchain_huggingface import HuggingFaceEmbeddings
-#from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from typing import List, Dict, Any, Optional
 from langchain.schema import Document
 from langchain.vectorstores import VectorStore

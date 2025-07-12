@@ -4,13 +4,12 @@ from sqlalchemy.orm import sessionmaker
 from datetime import datetime
 from dotenv import load_dotenv
 import os
-
 load_dotenv()
 
 # Database configuration
-DATABASE_URL = os.getenv("DATABASE_URL")
+DB_URI = os.getenv("DB_URI")
 
-engine = create_engine(DATABASE_URL)
+engine = create_engine(DB_URI)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
