@@ -10,12 +10,12 @@ current_state = {
     "response": ""
 }
 def main():
-    while True: 
-        
+    while True:
+
         user_input = input("Enter your query: ")
         if user_input.lower() in ["exit", "quit"]:
             break
-        
+        current_state["user_input"] = user_input
         current_state["messages"].append(HumanMessage(content=user_input))
         for chunk in multi_agent_graph.stream(current_state, config, stream_mode="values"):
             chunk['messages'][-1].pretty_print()

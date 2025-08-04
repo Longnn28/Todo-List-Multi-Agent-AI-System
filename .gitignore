@@ -3,7 +3,6 @@ data/
 __pycache__/
 .langgraph_api
 test_multi_file.py
-test_memory.py
 test_search.py
 multiagent_workflow_diagram.mermaid
 langgraph.json

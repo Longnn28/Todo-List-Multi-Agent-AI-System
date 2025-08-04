@@ -20,14 +20,9 @@ sqlalchemy
 psycopg2-binary
 alembic
 
-# Multi-agent tools
-geopy
-requests
-
 # Utility packages
 python-dotenv
 
 # Apis
 fastapi
 uvicorn
-python-jose[cryptography]

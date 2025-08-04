@@ -1,18 +1,19 @@
 from langchain_core.tools import tool
 from pydantic import Field, BaseModel
-from geopy.geocoders import Nominatim
-import requests
-from datetime import datetime
-from typing import Optional, List
+from datetime import datetime, timedelta
+from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
 from config.database import get_db, TodoItem, SessionLocal
 from config.vector_store import vector_store_crud
 from langchain_tavily import TavilySearch
+from utils.analytics_helpers import (
+    analyze_productivity,
+    analyze_patterns,
+    analyze_completion_rate,
+    analyze_workload
+)
+from utils.date_helpers import get_date_range
 
-class WeatherInput(BaseModel):
-    """Input for the weather tool."""
-    location: str = Field(description="The city to search for weather information")
-    date: str = Field(description="The date for the weather forecast in YYYY-MM-DD format")
 
 class TodoInput(BaseModel):
     """Input for todo operations."""
@@ -39,32 +40,17 @@ class TavilySearchInput(BaseModel):
     query: str = Field(description="The search query for web search")
     max_results: Optional[int] = Field(default=3, description="Maximum number of search results")
 
-geolocator = Nominatim(user_agent="weather_tool")
-
-@tool
-def get_weather(input: WeatherInput) -> str:
-    """Get the weather forecast for a given location and date."""
-    location = input.location
-    date = input.date
-
-    location = geolocator.geocode(location)
-    if location:
-        try:
-            lat, lon = location.latitude, location.longitude
-            response = requests.get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m&start_date={date}&end_date={date}")
-            data = response.json()
-            return {time: temp for time, temp in zip(data['hourly']['time'], data['hourly']['temperature_2m'])}
-        except Exception as e:
-            return {"error": str(e)}
-    else:
-        return {"error": "Location not found"}
+class TodoAnalyticsInput(BaseModel):
+    """Input for todo analytics tool."""
+    analysis_type: str = Field(description="Type of analysis: 'productivity', 'patterns', 'completion_rate', 'workload'")
+    days_back: Optional[int] = Field(default=30, description="Number of days to analyze (default: 30)")
+    priority_filter: Optional[str] = Field(default=None, description="Filter by priority: low, medium, high")
 
 @tool
 def rag_retrieve(input: RAGInput) -> str:
     """Retrieve relevant information from the school knowledge base."""
     try:
         import asyncio
-        # docs = asyncio.run(vector_store.search(input.query))
         docs = asyncio.run(vector_store_crud.search(input.query))
         if docs:
             context = "\n\n".join([f"Source: {doc.metadata.get('source_file', 'Unknown')}\nContent: {doc.page_content}" for doc in docs])
@@ -204,5 +190,31 @@ def delete_todo(todo_id: int) -> str:
     
     except Exception as e:
         return f"Error deleting todo: {str(e)}"
+    finally:
+        db.close()
+
+@tool
+def todo_analytics(input: TodoAnalyticsInput) -> str:
+    """Analyze todo patterns and provide insights for better productivity."""
+    try:
+        db = SessionLocal()
+        
+        # Calculate date range using utils helper
+        start_date, end_date = get_date_range(input.days_back)
+        
+        # Use analytics helpers from utils
+        if input.analysis_type == "productivity":
+            return analyze_productivity(db, start_date, end_date, input.priority_filter)
+        elif input.analysis_type == "patterns":
+            return analyze_patterns(db, start_date, end_date, input.priority_filter)
+        elif input.analysis_type == "completion_rate":
+            return analyze_completion_rate(db, start_date, end_date, input.priority_filter)
+        elif input.analysis_type == "workload":
+            return analyze_workload(db, start_date, end_date, input.priority_filter)
+        else:
+            return "Invalid analysis type. Available types: productivity, patterns, completion_rate, workload"
+    
+    except Exception as e:
+        return f"Error performing analytics: {str(e)}"
     finally:
         db.close()
