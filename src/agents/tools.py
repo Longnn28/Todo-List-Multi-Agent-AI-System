@@ -3,16 +3,16 @@ from pydantic import Field, BaseModel
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
-from config.database import get_db, TodoItem, SessionLocal
-from config.vector_store import vector_store_crud
+from src.config.database import get_db, TodoItem, SessionLocal
+from src.config.vector_store import vector_store_crud
 from langchain_tavily import TavilySearch
-from utils.analytics_helpers import (
+from src.utils.analytics_helpers import (
     analyze_productivity,
     analyze_patterns,
     analyze_completion_rate,
     analyze_workload
 )
-from utils.date_helpers import get_date_range
+from src.utils.date_helpers import get_date_range
 
 
 class TodoInput(BaseModel):
@@ -21,6 +21,7 @@ class TodoInput(BaseModel):
     description: Optional[str] = Field(default=None, description="Description of the todo item")
     priority: Optional[str] = Field(default="medium", description="Priority level: low, medium, high")
     due_date: Optional[str] = Field(default=None, description="Due date in YYYY-MM-DD HH:MM format")
+    user_id: int = Field(description="User ID for personalization (required)")
 
 class TodoUpdateInput(BaseModel):
     """Input for updating todo items."""
@@ -30,6 +31,7 @@ class TodoUpdateInput(BaseModel):
     completed: Optional[bool] = Field(default=None, description="Completion status")
     priority: Optional[str] = Field(default=None, description="New priority level")
     due_date: Optional[str] = Field(default=None, description="New due date in YYYY-MM-DD HH:MM format")
+    user_id: int = Field(description="User ID for authentication (required)")
 
 class RAGInput(BaseModel):
     """Input for RAG search tool."""
@@ -45,6 +47,7 @@ class TodoAnalyticsInput(BaseModel):
     analysis_type: str = Field(description="Type of analysis: 'productivity', 'patterns', 'completion_rate', 'workload'")
     days_back: Optional[int] = Field(default=30, description="Number of days to analyze (default: 30)")
     priority_filter: Optional[str] = Field(default=None, description="Filter by priority: low, medium, high")
+    user_id: int = Field(description="User ID for filtering analytics (required)")
 
 @tool
 def rag_retrieve(input: RAGInput) -> str:
@@ -74,12 +77,20 @@ def tavily_search(input: TavilySearchInput) -> str:
             return "\n".join(formatted_results)
         else:
             return "No search results found."
+
     except Exception as e:
         return f"Error performing web search: {str(e)}"
 
 @tool
 def create_todo(input: TodoInput) -> str:
-    """Create a new todo item."""
+    """Create a new todo item.
+    
+    Args:
+        input: TodoInput object containing todo details
+        
+    Returns:
+        A confirmation message with the created todo's ID
+    """
     try:
         db = SessionLocal()
         
@@ -97,7 +108,8 @@ def create_todo(input: TodoInput) -> str:
             title=input.title,
             description=input.description,
             priority=input.priority,
-            due_date=due_date
+            due_date=due_date,
+            user_id=input.user_id
         )
         
         db.add(todo)
@@ -112,39 +124,68 @@ def create_todo(input: TodoInput) -> str:
         db.close()
 
 @tool
-def get_todos() -> str:
-    """Get all todo items."""
+def get_todos(user_id: int) -> str:
+    """Get all todo items for a specific user.
+    
+    Args:
+        user_id: User ID for filtering todos (required)
+        
+    Returns:
+        A JSON string representation of the user's todos
+    """
     try:
         db = SessionLocal()
-        todos = db.query(TodoItem).all()
+        
+        query = db.query(TodoItem).filter(TodoItem.user_id == user_id)
+        todos = query.all()
         
         if not todos:
-            return "No todos found."
+            return str({"message": "No todos found", "todos": []})
         
-        result = "Current todos:\n"
+        todos_list = []
         for todo in todos:
-            status = "✅" if todo.completed else "⏰"
-            due_info = f" (Due: {todo.due_date.strftime('%Y-%m-%d %H:%M')})" if todo.due_date else ""
-            result += f"{status} {todo.id}. {todo.title} - {todo.priority} priority{due_info}\n"
-            if todo.description:
-                result += f"   Description: {todo.description}\n"
+            todo_dict = {
+                "id": todo.id,
+                "title": todo.title,
+                "description": todo.description,
+                "priority": todo.priority,
+                "completed": todo.completed,
+                "due_date": todo.due_date.strftime('%Y-%m-%d %H:%M') if todo.due_date else None,
+                "user_id": todo.user_id
+            }
+            todos_list.append(todo_dict)
         
-        return result
+        result = {
+            "message": f"Found {len(todos_list)} todos",
+            "todos": todos_list
+        }
+        
+        return str(result)
     
     except Exception as e:
-        return f"Error retrieving todos: {str(e)}"
+        return str({"error": f"Error retrieving todos: {str(e)}", "todos": []})
     finally:
         db.close()
 
 @tool
 def update_todo(input: TodoUpdateInput) -> str:
-    """Update an existing todo item."""
+    """Update an existing todo item with authorization check.
+    
+    Args:
+        input: TodoUpdateInput object containing update details
+        
+    Returns:
+        A confirmation message or error message
+    """
     try:
         db = SessionLocal()
-        todo = db.query(TodoItem).filter(TodoItem.id == input.todo_id).first()
+        
+        # Filter by user_id (now required)
+        query = db.query(TodoItem).filter(TodoItem.id == input.todo_id, TodoItem.user_id == input.user_id)
+        todo = query.first()
         
         if not todo:
-            return f"Todo with ID {input.todo_id} not found."
+            return f"Todo with ID {input.todo_id} not found or you don't have permission to update it."
         
         if input.title is not None:
             todo.title = input.title
@@ -174,14 +215,24 @@ def update_todo(input: TodoUpdateInput) -> str:
         db.close()
 
 @tool
-def delete_todo(todo_id: int) -> str:
-    """Delete a todo item by ID."""
+def delete_todo(todo_id: int, user_id: int) -> str:
+    """Delete a todo item by its ID with user authorization.
+    
+    Args:
+        todo_id: The ID of the todo item to delete
+        user_id: User ID for authentication (required)
+        
+    Returns:
+        A confirmation message or error message
+    """
     try:
         db = SessionLocal()
-        todo = db.query(TodoItem).filter(TodoItem.id == todo_id).first()
+        
+        query = db.query(TodoItem).filter(TodoItem.id == todo_id, TodoItem.user_id == user_id)
+        todo = query.first()
         
         if not todo:
-            return f"Todo with ID {todo_id} not found."
+            return f"Todo with ID {todo_id} not found or you don't have permission to delete it."
         
         db.delete(todo)
         db.commit()
@@ -202,15 +253,20 @@ def todo_analytics(input: TodoAnalyticsInput) -> str:
         # Calculate date range using utils helper
         start_date, end_date = get_date_range(input.days_back)
         
-        # Use analytics helpers from utils
+        # Prepare base query with user filtering
+        base_query = db.query(TodoItem).filter(TodoItem.created_at >= start_date)
+        if input.user_id:
+            base_query = base_query.filter(TodoItem.user_id == input.user_id)
+        
+        # Use analytics helpers from utils with user filtering
         if input.analysis_type == "productivity":
-            return analyze_productivity(db, start_date, end_date, input.priority_filter)
+            return analyze_productivity(db, start_date, end_date, input.user_id, input.priority_filter)
         elif input.analysis_type == "patterns":
-            return analyze_patterns(db, start_date, end_date, input.priority_filter)
+            return analyze_patterns(db, start_date, end_date, input.user_id, input.priority_filter)
         elif input.analysis_type == "completion_rate":
-            return analyze_completion_rate(db, start_date, end_date, input.priority_filter)
+            return analyze_completion_rate(db, start_date, end_date, input.user_id, input.priority_filter)
         elif input.analysis_type == "workload":
-            return analyze_workload(db, start_date, end_date, input.priority_filter)
+            return analyze_workload(db, start_date, end_date, input.user_id, input.priority_filter)
         else:
             return "Invalid analysis type. Available types: productivity, patterns, completion_rate, workload"
     

@@ -1,15 +1,16 @@
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, Text
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime, timezone
-from dotenv import load_dotenv
 import os
+from dotenv import load_dotenv
+
 load_dotenv()
 
 # Database configuration
-DB_URI = os.getenv("DB_URI")
+POST_DB_URI = os.getenv("POST_DB_URI")
 
-engine = create_engine(DB_URI)
+engine = create_engine(POST_DB_URI)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -22,6 +23,7 @@ class TodoItem(Base):
     completed = Column(Boolean, default=False)
     priority = Column(String, default="medium")  # low, medium, high
     due_date = Column(DateTime, nullable=True)
+    user_id = Column(Integer, nullable=False, index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

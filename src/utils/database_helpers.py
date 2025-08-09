@@ -4,6 +4,7 @@ Database helper functions for SQL operations and data manipulation.
 
 from sqlalchemy import func
 from typing import Any
+from .logger import logger
 
 
 def safe_sum_boolean(column):
@@ -31,6 +32,7 @@ def safe_cast_to_int(column, database_type: str = "postgresql"):
     Returns:
         SQLAlchemy cast expression
     """
+    logger.debug(f"Casting column to int using database type: {database_type}")
     if database_type == "postgresql":
         return func.cast(column, 'integer')
     elif database_type == "sqlite":
@@ -52,6 +54,7 @@ def get_completion_percentage(completed_count: int, total_count: int) -> float:
         Percentage as float (0-100)
     """
     if total_count == 0:
+        logger.debug("get_completion_percentage called with total_count=0, returning 0.0")
         return 0.0
     return (completed_count / total_count) * 100
 
@@ -67,5 +70,6 @@ def safe_average(values: list) -> float:
         Average as float, 0.0 if empty list
     """
     if not values:
+        logger.debug("safe_average called with empty list, returning 0.0")
         return 0.0
     return sum(values) / len(values)

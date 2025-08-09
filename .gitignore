@@ -1,8 +1,15 @@
 .env
 data/
 __pycache__/
-.langgraph_api
+.langgraph_api/
 test_multi_file.py
 test_search.py
 multiagent_workflow_diagram.mermaid
 langgraph.json
+logs/
+logger.py
+.vscode/
+chat_test.html
+migrations/
+test_chat_stream.py
+chatbot_helper.py

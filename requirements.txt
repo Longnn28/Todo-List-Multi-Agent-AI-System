@@ -13,6 +13,7 @@ pymupdf
 python-docx
 unstructured[docx,pptx]
 pydantic
+pydantic[email]
 
 # Database
 langgraph-checkpoint-postgres
@@ -20,8 +21,13 @@ sqlalchemy
 psycopg2-binary
 alembic
 
+#Authentication
+python_jose
+PyJWT
+
 # Utility packages
 python-dotenv
+loguru
 
 # Apis
 fastapi

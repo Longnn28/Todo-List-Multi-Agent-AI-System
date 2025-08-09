@@ -5,8 +5,8 @@ from typing import List, Dict, Any, Optional
 from langchain.schema import Document
 from langchain.vectorstores import VectorStore
 from dotenv import load_dotenv
-load_dotenv()
 
+load_dotenv()
 
 class VectorStoreCRUD:
     def __init__(self, k: int = 3, score_threshold: float = 0.3) -> VectorStore:
@@ -35,7 +35,7 @@ class VectorStoreCRUD:
         await self.vector_store.aadd_documents(documents, ids=ids)
 
     async def get_documents(self, filter: Optional[Dict[str, Any]] = None):
-        return await self.vector_store.asimilarity_search("", k=10000, filter=filter)
+        return await self.vector_store.asimilarity_search("", 10000, filter=filter)
 
     async def delete_documents(self, ids: List[str]):
         await self.vector_store.adelete(ids=ids)
