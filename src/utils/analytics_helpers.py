@@ -3,67 +3,67 @@ Analytics helper functions for todo data analysis.
 """
 
 from datetime import datetime, timedelta
-from typing import Optional, List, Dict, Any
+from typing import Optional, Dict, Any
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_
+from sqlalchemy import func, and_, case
 from src.config.database import TodoItem
-from .database_helpers import safe_sum_boolean, get_completion_percentage, safe_average
+from .database_helpers import get_completion_percentage, safe_average
 from .date_helpers import get_weekday_name, get_hour_range_string
 from .logger import logger
 
 
-def analyze_productivity(db: Session, start_date: datetime, end_date: datetime, user_id: int,
+def analyze_productivity(db: Session, start_date: datetime, end_date: datetime, userId: int,
                       priority_filter: Optional[str] = None) -> str:
     """Analyze productivity metrics and patterns."""
-    logger.info(f"Analyzing productivity from {start_date} to {end_date}, priority filter: {priority_filter}, user_id: {user_id}")
+    logger.info(f"Analyzing productivity from {start_date} to {end_date}, priority filter: {priority_filter}, userId: {userId}")
     
     # Total tasks created vs completed
-    query = db.query(TodoItem).filter(TodoItem.created_at >= start_date)
+    query = db.query(TodoItem).filter(TodoItem.createdAt >= start_date)
     if priority_filter:
         query = query.filter(TodoItem.priority == priority_filter)
-    query = query.filter(TodoItem.user_id == user_id)
+    query = query.filter(TodoItem.userId == userId)
     
     total_tasks = query.count()
-    completed_tasks = query.filter(TodoItem.completed == True).count()
+    completed_tasks = query.filter(TodoItem.status == 'done').count()
     
     # Tasks by priority
     priority_query = db.query(
         TodoItem.priority,
         func.count(TodoItem.id).label('total'),
-        safe_sum_boolean(TodoItem.completed).label('completed')
-    ).filter(TodoItem.created_at >= start_date)
-    priority_query = priority_query.filter(TodoItem.user_id == user_id)
+        func.sum(case((TodoItem.status == 'done', 1), else_=0)).label('completed')
+    ).filter(TodoItem.createdAt >= start_date)
+    priority_query = priority_query.filter(TodoItem.userId == userId)
     
     priority_stats = priority_query.group_by(TodoItem.priority).all()
     
     # Overdue tasks
     overdue_query = db.query(TodoItem).filter(
         and_(
-            TodoItem.due_date < datetime.now(),
-            TodoItem.completed == False,
-            TodoItem.created_at >= start_date
+            TodoItem.deadline < datetime.now(),
+            TodoItem.status != 'done',
+            TodoItem.createdAt >= start_date
         )
     )
-    overdue_query = overdue_query.filter(TodoItem.user_id == user_id)
+    overdue_query = overdue_query.filter(TodoItem.userId == userId)
     
     overdue_tasks = overdue_query.count()
     
     # Average completion time for completed tasks
     completed_query = db.query(TodoItem).filter(
         and_(
-            TodoItem.completed == True,
-            TodoItem.created_at >= start_date,
-            TodoItem.updated_at.isnot(None)
+            TodoItem.status == 'done',
+            TodoItem.createdAt >= start_date,
+            TodoItem.updatedAt.isnot(None)
         )
     )
-    completed_query = completed_query.filter(TodoItem.user_id == user_id)
+    completed_query = completed_query.filter(TodoItem.userId == userId)
     
     completed_with_dates = completed_query.all()
     
     completion_times = []
     for task in completed_with_dates:
-        if task.updated_at and task.created_at:
-            completion_time = (task.updated_at - task.created_at).total_seconds() / 3600  # hours
+        if task.updatedAt and task.createdAt:
+            completion_time = (task.updatedAt - task.createdAt).total_seconds() / 3600  # hours
             completion_times.append(completion_time)
     
     avg_completion_time = safe_average(completion_times)
@@ -107,43 +107,27 @@ def analyze_productivity(db: Session, start_date: datetime, end_date: datetime, 
     return result
 
 
-def analyze_patterns(db: Session, start_date: datetime, end_date: datetime, user_id: int,
+def analyze_patterns(db: Session, start_date: datetime, end_date: datetime, userId: int,
                    priority_filter: Optional[str] = None) -> str:
     """Analyze behavioral patterns in task management."""
     
     # Creation patterns by day of week
     weekday_query = db.query(
-        func.extract('dow', TodoItem.created_at).label('weekday'),
+        func.extract('dow', TodoItem.createdAt).label('weekday'),
         func.count(TodoItem.id).label('count')
-    ).filter(TodoItem.created_at >= start_date)
-    weekday_query = weekday_query.filter(TodoItem.user_id == user_id)
+    ).filter(TodoItem.createdAt >= start_date)
+    weekday_query = weekday_query.filter(TodoItem.userId == userId)
     
     tasks_by_weekday = weekday_query.group_by('weekday').all()
     
     # Creation patterns by hour
     hour_query = db.query(
-        func.extract('hour', TodoItem.created_at).label('hour'),
+        func.extract('hour', TodoItem.createdAt).label('hour'),
         func.count(TodoItem.id).label('count')
-    ).filter(TodoItem.created_at >= start_date)
-    hour_query = hour_query.filter(TodoItem.user_id == user_id)
+    ).filter(TodoItem.createdAt >= start_date)
+    hour_query = hour_query.filter(TodoItem.userId == userId)
     
     tasks_by_hour = hour_query.group_by('hour').all()
-    
-    # Most common task patterns
-    common_keywords = {}
-    task_query = db.query(TodoItem).filter(TodoItem.created_at >= start_date)
-    task_query = task_query.filter(TodoItem.user_id == user_id)
-    
-    tasks = task_query.all()
-    
-    for task in tasks:
-        words = task.title.lower().split()
-        for word in words:
-            if len(word) > 3:  # Ignore short words
-                common_keywords[word] = common_keywords.get(word, 0) + 1
-    
-    # Sort by frequency
-    top_keywords = sorted(common_keywords.items(), key=lambda x: x[1], reverse=True)[:5]
     
     result = f"""🔍 PHÂN TÍCH PATTERN CÔNG VIỆC ({(end_date - start_date).days} ngày)
 
@@ -189,7 +173,7 @@ def analyze_patterns(db: Session, start_date: datetime, end_date: datetime, user
     return result
 
 
-def analyze_completion_rate(db: Session, start_date: datetime, end_date: datetime, user_id: int,
+def analyze_completion_rate(db: Session, start_date: datetime, end_date: datetime, userId: int,
                         priority_filter: Optional[str] = None) -> str:
     """Analyze task completion rates and trends."""
     
@@ -202,18 +186,18 @@ def analyze_completion_rate(db: Session, start_date: datetime, end_date: datetim
         
         week_query = db.query(TodoItem).filter(
             and_(
-                TodoItem.created_at >= current_date,
-                TodoItem.created_at < week_end
+                TodoItem.createdAt >= current_date,
+                TodoItem.createdAt < week_end
             )
         )
         
         if priority_filter:
             week_query = week_query.filter(TodoItem.priority == priority_filter)
         
-        week_query = week_query.filter(TodoItem.user_id == user_id)
+        week_query = week_query.filter(TodoItem.userId == userId)
         
         total = week_query.count()
-        completed = week_query.filter(TodoItem.completed == True).count()
+        completed = week_query.filter(TodoItem.status == 'done').count()
         
         weekly_stats.append({
             'week_start': current_date.strftime('%m/%d'),
@@ -228,9 +212,9 @@ def analyze_completion_rate(db: Session, start_date: datetime, end_date: datetim
     priority_query = db.query(
         TodoItem.priority,
         func.count(TodoItem.id).label('total'),
-        safe_sum_boolean(TodoItem.completed).label('completed')
-    ).filter(TodoItem.created_at >= start_date)
-    priority_query = priority_query.filter(TodoItem.user_id == user_id)
+        func.sum(case((TodoItem.status == 'done', 1), else_=0)).label('completed')
+    ).filter(TodoItem.createdAt >= start_date)
+    priority_query = priority_query.filter(TodoItem.userId == userId)
     
     priority_completion = priority_query.group_by(TodoItem.priority).all()
     
@@ -265,16 +249,16 @@ def analyze_completion_rate(db: Session, start_date: datetime, end_date: datetim
     return result
 
 
-def analyze_workload(db: Session, start_date: datetime, end_date: datetime, user_id: int,
+def analyze_workload(db: Session, start_date: datetime, end_date: datetime, userId: int,
                   priority_filter: Optional[str] = None) -> str:
     """Analyze workload distribution and balance."""
     
     # Daily task creation
     daily_query = db.query(
-        func.date(TodoItem.created_at).label('date'),
+        func.date(TodoItem.createdAt).label('date'),
         func.count(TodoItem.id).label('count')
-    ).filter(TodoItem.created_at >= start_date)
-    daily_query = daily_query.filter(TodoItem.user_id == user_id)
+    ).filter(TodoItem.createdAt >= start_date)
+    daily_query = daily_query.filter(TodoItem.userId == userId)
     
     daily_creation = daily_query.group_by('date').order_by('date').all()
     
@@ -284,28 +268,28 @@ def analyze_workload(db: Session, start_date: datetime, end_date: datetime, user
         func.count(TodoItem.id).label('count')
     ).filter(
         and_(
-            TodoItem.completed == False,
-            TodoItem.created_at >= start_date
+            TodoItem.status == 'pending',
+            TodoItem.createdAt >= start_date
         )
     )
-    pending_query = pending_query.filter(TodoItem.user_id == user_id)
+    pending_query = pending_query.filter(TodoItem.userId == userId)
     
     pending_by_priority = pending_query.group_by(TodoItem.priority).all()
     
     # Tasks with due dates
     due_date_query = db.query(TodoItem).filter(
         and_(
-            TodoItem.due_date.isnot(None),
-            TodoItem.created_at >= start_date
+            TodoItem.deadline.isnot(None),
+            TodoItem.createdAt >= start_date
         )
     )
-    due_date_query = due_date_query.filter(TodoItem.user_id == user_id)
+    due_date_query = due_date_query.filter(TodoItem.userId == userId)
     
     tasks_with_due_dates = due_date_query.count()
     
     # Total tasks
-    total_query = db.query(TodoItem).filter(TodoItem.created_at >= start_date)
-    total_query = total_query.filter(TodoItem.user_id == user_id)
+    total_query = db.query(TodoItem).filter(TodoItem.createdAt >= start_date)
+    total_query = total_query.filter(TodoItem.userId == userId)
     
     total_tasks = total_query.count()
     
@@ -355,50 +339,56 @@ def analyze_workload(db: Session, start_date: datetime, end_date: datetime, user
     return result
 
 
-def get_analytics_summary(db: Session, start_date: datetime, end_date: datetime, user_id: int) -> Dict[str, Any]:
+def get_analytics_summary(db: Session, start_date: datetime, end_date: datetime, userId: int) -> Dict[str, Any]:
     """
     Get summary analytics data for dashboard or quick overview.
     
     Returns:
         Dictionary with key metrics
     """
-    logger.info(f"Generating analytics summary from {start_date} to {end_date}, user_id: {user_id}")
+    logger.info(f"Generating analytics summary from {start_date} to {end_date}, userId: {userId}")
     
     # Total tasks
-    total_query = db.query(TodoItem).filter(TodoItem.created_at >= start_date)
-    total_query = total_query.filter(TodoItem.user_id == user_id)
+    total_query = db.query(TodoItem).filter(TodoItem.createdAt >= start_date)
+    total_query = total_query.filter(TodoItem.userId == userId)
     total_tasks = total_query.count()
     
     # Completed tasks
     completed_query = db.query(TodoItem).filter(
-        and_(TodoItem.created_at >= start_date, TodoItem.completed == True)
+        and_(TodoItem.createdAt >= start_date, TodoItem.status == 'done')
     )
-    completed_query = completed_query.filter(TodoItem.user_id == user_id)
+    completed_query = completed_query.filter(TodoItem.userId == userId)
     completed_tasks = completed_query.count()
     
-    pending_tasks = total_tasks - completed_tasks
+    # Pending tasks
+    pending_query = db.query(TodoItem).filter(
+        and_(TodoItem.createdAt >= start_date, TodoItem.status == 'pending')
+    )
+    pending_query = pending_query.filter(TodoItem.userId == userId)
+    pending_tasks = pending_query.count()
+    
     completion_rate = get_completion_percentage(completed_tasks, total_tasks)
     
     # High priority pending tasks
     high_priority_query = db.query(TodoItem).filter(
         and_(
-            TodoItem.created_at >= start_date,
-            TodoItem.completed == False,
+            TodoItem.createdAt >= start_date,
+            TodoItem.status == 'pending',
             TodoItem.priority == "high"
         )
     )
-    high_priority_query = high_priority_query.filter(TodoItem.user_id == user_id)
+    high_priority_query = high_priority_query.filter(TodoItem.userId == userId)
     high_priority_pending = high_priority_query.count()
     
     # Overdue tasks
     overdue_query = db.query(TodoItem).filter(
         and_(
-            TodoItem.due_date < datetime.now(),
-            TodoItem.completed == False,
-            TodoItem.created_at >= start_date
+            TodoItem.deadline < datetime.now(),
+            TodoItem.status == 'pending',
+            TodoItem.createdAt >= start_date
         )
     )
-    overdue_query = overdue_query.filter(TodoItem.user_id == user_id)
+    overdue_query = overdue_query.filter(TodoItem.userId == userId)
     overdue_tasks = overdue_query.count()
     
     result = {

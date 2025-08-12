@@ -1,5 +1,6 @@
-from src.agents.graph import multi_agent_graph
+from src.agents.graph import create_graph
 from langchain_core.messages import HumanMessage
+from langgraph.checkpoint.memory import InMemorySaver
 
 config = {"configurable": {"thread_id": "2"}}
 
@@ -17,6 +18,8 @@ async def main():
             break
 
         current_state["messages"].append(HumanMessage(content=user_input))
+        graph = create_graph()
+        multi_agent_graph = graph.compile(checkpointer=InMemorySaver())
         async for event in multi_agent_graph.astream_events(current_state, config, version="v2"):
             if event["event"] == "on_chat_model_stream" and event["metadata"]["langgraph_node"] == "agent":
                 print(event["data"]["chunk"].content, end="", flush=True)

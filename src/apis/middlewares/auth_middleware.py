@@ -3,7 +3,6 @@ from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.responses import JSONResponse
 import jwt
-from jose import JWTError
 import requests
 from pydantic import BaseModel, Field, EmailStr
 
@@ -43,5 +42,5 @@ async def get_current_user(
         
         return User(user_id=user_id, email=email, role=role)
     
-    except JWTError:
+    except jwt.PyJWTError:
         return JSONResponse(content={"msg": "Authentication failed"}, status_code=401)

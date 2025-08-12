@@ -4,8 +4,6 @@ Contains helper functions, utilities, and common tools.
 """
 
 from .database_helpers import (
-    safe_sum_boolean,
-    safe_cast_to_int,
     get_completion_percentage,
     safe_average
 )
@@ -24,8 +22,6 @@ from .date_helpers import (
 
 __all__ = [
     # Database helpers
-    'safe_sum_boolean',
-    'safe_cast_to_int', 
     'get_completion_percentage',
     'safe_average',
     

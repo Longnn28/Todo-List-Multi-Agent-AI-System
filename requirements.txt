@@ -11,18 +11,17 @@ sentence-transformers
 # Document loaders
 pymupdf
 python-docx
-unstructured[docx,pptx]
+unstructured[docx]
 pydantic
 pydantic[email]
 
 # Database
 langgraph-checkpoint-postgres
 sqlalchemy
-psycopg2-binary
-alembic
+psycopg[binary,pool]
+#alembic
 
 #Authentication
-python_jose
 PyJWT
 
 # Utility packages
@@ -32,3 +31,4 @@ loguru
 # Apis
 fastapi
 uvicorn
+websockets

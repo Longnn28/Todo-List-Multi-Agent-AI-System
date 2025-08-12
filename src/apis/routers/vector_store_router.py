@@ -11,7 +11,6 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 import os
 import tempfile
 import shutil
-import fitz
 from uuid import uuid4
 
 router = APIRouter(prefix="/vector-store", tags=["Vector Store"])
@@ -101,24 +100,24 @@ async def add_documents(
             )
     
     return responses
-    
+
 
 @router.delete("/delete-documents")
 async def delete_documents(filenames: List[str] = Query(None)):
     logger.info(f"Request to delete documents by filenames: {filenames}")
     document_data = await vector_store_crud.get_documents()
     
-    # if not filenames:
-    #     # If no filenames provided, delete all documents
-    #     logger.warning("No filenames provided, deleting all documents")
-    #     document_ids = [doc.id for doc in document_data]
-    #     await vector_store_crud.delete_documents(ids=document_ids)
-    #     return {"message": f"Deleted all {len(document_ids)} documents"}
+    if not filenames:
+        # If no filenames provided, delete all documents
+        logger.warning("No filenames provided, deleting all documents")
+        document_ids = [doc.id for doc in document_data]
+        await vector_store_crud.delete_documents(ids=document_ids)
+        return {"message": f"Deleted all {len(document_ids)} documents"}
     
-    # Filter documents by source_file matching the provided filenames
+    # Filter documents by source matching the provided filenames
     docs_to_delete = []
     for doc in document_data:
-        if "source_file" in doc.metadata and doc.metadata["source_file"] in filenames:
+        if "source" in doc.metadata and doc.metadata["source"] in filenames:
             docs_to_delete.append(doc)
     
     if not docs_to_delete:
@@ -127,9 +126,9 @@ async def delete_documents(filenames: List[str] = Query(None)):
     
     # Extract IDs of documents to delete
     delete_ids = [doc.id for doc in docs_to_delete]
-    logger.info(f"Deleting {len(delete_ids)} chunks from {len(set([doc.metadata.get('source_file') for doc in docs_to_delete]))} files")
+    logger.info(f"Deleting {len(delete_ids)} chunks from {len(set([doc.metadata.get('source') for doc in docs_to_delete]))} files")
     
     await vector_store_crud.delete_documents(ids=delete_ids)
     return {
-        "message": f"Deleted {len(delete_ids)} chunks from files: {list(set([doc.metadata.get('source_file') for doc in docs_to_delete]))}"
+        "message": f"Deleted {len(delete_ids)} chunks from files: {list(set([doc.metadata.get('source') for doc in docs_to_delete]))}"
     }

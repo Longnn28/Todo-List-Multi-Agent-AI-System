@@ -6,14 +6,9 @@ from typing import TypedDict, List, Annotated
 from langgraph.checkpoint.memory import InMemorySaver
 from langchain_core.prompts import ChatPromptTemplate
 from src.config.llm import llm
-#from langgraph.checkpoint.postgres import PostgresSaver
-#from psycopg import Connection
 from src.agents.prompts import ROUTER_PROMPT, RAG_AGENT_PROMPT, SCHEDULE_AGENT_PROMPT, GENERIC_AGENT_PROMPT, ANALYTIC_AGENT_PROMPT, SUMMARIZE_PROMPT
 from src.agents.tools import rag_retrieve, create_todo, get_todos, update_todo, delete_todo, tavily_search, todo_analytics
 from datetime import datetime
-from dotenv import load_dotenv
-
-load_dotenv()
 
 class AgentState(TypedDict):
     messages: Annotated[List[BaseMessage], add_messages]
@@ -21,8 +16,6 @@ class AgentState(TypedDict):
     response: str
     summary: str
     user_id: str
-    #user_input: str
-
 
 def should_summarize(state: AgentState) -> str:
     """Kiểm tra xem có cần tóm tắt ngữ cảnh không dựa trên số lượng tin nhắn AI."""
@@ -51,7 +44,7 @@ def summarize_node(state: AgentState) -> AgentState:
         "chat_history": chat_history
     })
 
-    # Delete all but the 2 most recent messages
+    # Xoá tất cả trừ 2 tin nhắn gần đây nhất
     remove_messages = [RemoveMessage(id=m.id) for m in state["messages"][:-2]]
     
     return {
@@ -64,28 +57,13 @@ def summarize_node(state: AgentState) -> AgentState:
 def router_node(state: AgentState) -> AgentState:
     """Router agent to decide which agent should handle the request."""
     # Lấy user input từ message cuối cùng
-    #user_input = state["user_input"]
     user_input = state["messages"][-1].content
     messages = state["messages"]
     
-    # # Tạo chat history từ tất cả messages
-    # chat_history = ""
-    
-    # if state.get("summary"):
-    #     chat_history = f"[Tóm tắt cuộc hội thoại trước]: {state['summary']}\n"
-    #     for msg in messages:
-    #         role = "User" if isinstance(msg, HumanMessage) else "Assistant"
-    #         chat_history += f"{role}: {msg.content}\n"
-    # else:
-    #     for msg in messages:
-    #         role = "User" if isinstance(msg, HumanMessage) else "Assistant"
-    #         chat_history += f"{role}: {msg.content}\n"
-    
     # Lấy message AI cuối cùng để tạo chat history
-
     last_ai_message = ""
     if len(messages) >= 2:
-        last_ai_message += f"Assistant: {messages[-2].content}"  # Lấy message AI cuối cùng
+        last_ai_message += f"Assistant: {messages[-2].content}"
 
     router_prompt = ChatPromptTemplate.from_template(ROUTER_PROMPT)
     router_chain = router_prompt | llm
@@ -95,10 +73,8 @@ def router_node(state: AgentState) -> AgentState:
         "chat_history": last_ai_message
     })
     
-    # Extract the route decision from the response
     route_decision = response.content.strip().lower()
     
-    # Ensure valid route decision
     if "rag_agent" in route_decision:
         route_decision = "rag_agent"
     elif "schedule_agent" in route_decision:
@@ -108,7 +84,7 @@ def router_node(state: AgentState) -> AgentState:
     elif "generic_agent" in route_decision:
         route_decision = "generic_agent"
     else:
-        # Default to generic if unclear
+        # Mặc định nếu không rõ
         route_decision = "generic_agent"
     
     return {
@@ -124,7 +100,6 @@ def create_rag_agent():
 def create_schedule_agent(user_id=""):
     """Create Schedule agent using create_react_agent."""
     tools = [create_todo, get_todos, update_todo, delete_todo]
-    # Format prompt with current datetime and user_id
     current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     formatted_prompt = SCHEDULE_AGENT_PROMPT.format(
         current_datetime=current_datetime,
@@ -135,25 +110,22 @@ def create_schedule_agent(user_id=""):
 def create_generic_agent():
     """Create Generic agent using create_react_agent."""
     tools = [tavily_search]
-    # Format prompt with current datetime
     current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     formatted_prompt = GENERIC_AGENT_PROMPT.format(current_datetime=current_datetime)
     return create_react_agent(llm, tools, prompt=formatted_prompt)
 
-def create_analytic_agent():
-    """Create Study Advisor agent using create_react_agent."""
+def create_analytic_agent(user_id=""):
+    """Create Analytic agent using create_react_agent."""
     tools = [todo_analytics]
-    return create_react_agent(llm, tools, prompt=ANALYTIC_AGENT_PROMPT)
+    formatted_prompt = ANALYTIC_AGENT_PROMPT.format(user_id=user_id)
+    return create_react_agent(llm, tools, prompt=formatted_prompt)
 
 # Create agent instances
 rag_agent = create_rag_agent()
-# schedule_agent được tạo động trong schedule_agent_node để có user_id
 generic_agent = create_generic_agent()
-analytic_agent = create_analytic_agent()
 
 def rag_agent_node(state: AgentState) -> AgentState:
     """RAG agent node for school information queries."""
-    # Sử dụng messages từ state để có memory
     result = rag_agent.invoke({"messages": state["messages"]})
     
     final_message = result["messages"][-1].content if result["messages"] else "No response generated."
@@ -166,13 +138,11 @@ def rag_agent_node(state: AgentState) -> AgentState:
 
 def schedule_agent_node(state: AgentState) -> AgentState:
     """Schedule agent node for CRUD operations."""
-    # Lấy user_id từ state nếu có
     user_id = state["user_id"]
     
     # Tạo schedule agent với user_id
     schedule_agent = create_schedule_agent(user_id=user_id)
     
-    # Sử dụng messages từ state để có memory
     result = schedule_agent.invoke({"messages": state["messages"]})
     
     final_message = result["messages"][-1].content if result["messages"] else "No response generated."
@@ -185,7 +155,6 @@ def schedule_agent_node(state: AgentState) -> AgentState:
 
 def generic_agent_node(state: AgentState) -> AgentState:
     """Generic agent node for general queries."""
-    # Sử dụng messages từ state để có memory
     result = generic_agent.invoke({"messages": state["messages"]})
     
     final_message = result["messages"][-1].content if result["messages"] else "No response generated."
@@ -198,7 +167,11 @@ def generic_agent_node(state: AgentState) -> AgentState:
 
 def analytic_agent_node(state: AgentState) -> AgentState:
     """Analytic agent node for learning analytics and advice."""
-    # Sử dụng messages từ state để có memory
+    user_id = state["user_id"]
+    
+    # Tạo analytic agent với user_id
+    analytic_agent = create_analytic_agent(user_id=user_id)
+    
     result = analytic_agent.invoke({"messages": state["messages"]})
     
     final_message = result["messages"][-1].content if result["messages"] else "No response generated."
@@ -228,10 +201,8 @@ def create_graph() -> StateGraph:
     graph.add_node("generic_agent", generic_agent_node)
     graph.add_node("analytic_agent", analytic_agent_node)
     
-    # Set entry point - bắt đầu từ kiểm tra summarize
     graph.set_entry_point("summarize_check")
     
-    # Add conditional routing từ entry point
     graph.add_conditional_edges(
         "summarize_check",
         should_summarize,
@@ -241,10 +212,8 @@ def create_graph() -> StateGraph:
         }
     )
     
-    # Từ summarize node đi đến router
     graph.add_edge("summarize", "router")
     
-    # Add conditional routing từ router
     graph.add_conditional_edges(
         "router",
         route_to_agent,
@@ -262,16 +231,4 @@ def create_graph() -> StateGraph:
     graph.add_edge("analytic_agent", END)
     graph.add_edge("generic_agent", END)
     
-    return graph.compile(checkpointer=InMemorySaver())
-
-# DB_URI = os.getenv("DB_URI")
-
-# connection_kwargs = {
-#     "autocommit": True,
-#     "prepare_threshold": 0,
-# }
-
-# conn = Connection.connect(DB_URI, **connection_kwargs)
-# checkpointer = PostgresSaver(conn)
-# #checkpointer.setup()
-multi_agent_graph = create_graph()
+    return graph
