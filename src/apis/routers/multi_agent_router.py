@@ -10,7 +10,7 @@ from src.utils.logger import logger
 from src.apis.middlewares.auth_middleware import get_current_user, User
 from typing import Annotated
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-from psycopg_pool import AsyncConnectionPool
+from src.config.pool_manager import get_connection_pool
 import os
 from dotenv import load_dotenv
 
@@ -20,13 +20,12 @@ router = APIRouter(prefix="/chatbot", tags=["AI"])
 
 user_dependency = Annotated[User, Depends(get_current_user)]
 
-connection_kwargs = {
-    "autocommit": True,
-    "prepare_threshold": 0,
-}
+# Remove old pool management code - now handled by pool_manager
+# All pool creation logic moved to src.config.pool_manager
 
 async def message_generator(input_graph: dict, config: dict):
-    async with AsyncConnectionPool(os.getenv("POST_DB_URI"), kwargs=connection_kwargs) as conn:
+    pool = await get_connection_pool()
+    async with pool.connection() as conn:
         checkpointer = AsyncPostgresSaver(conn)
         # await checkpointer.setup()
         graph = create_graph()
@@ -49,19 +48,57 @@ async def message_generator(input_graph: dict, config: dict):
                     },
                     ensure_ascii=False,
                 ) + "\n\n"
+
+        yield json.dumps(
+            {
+                "type": "final_message",
+                "content": stream_text,
+            },
+            ensure_ascii=False,
+        )
         logger.info(f"Message: {stream_text}")
+
+@router.get("/health")
+async def health_check():
+    """Health check endpoint to monitor database pool status"""
+    try:
+        pool = await get_connection_pool()
+        # Test connection
+        async with pool.connection() as conn:
+            pass
+        
+        return {
+            "status": "healthy",
+            "database": "connected",
+            "pool_stats": {
+                "available": pool.get_stats().get("pool_available", "unknown"),
+                "size": pool.get_stats().get("pool_size", "unknown"),
+                "max_size": pool.get_stats().get("pool_max", "unknown")
+            },
+            "message": "Database pool is operational"
+        }
+    except Exception as e:
+        logger.error(f"Health check failed: {str(e)}")
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={
+                "status": "unhealthy", 
+                "database": "disconnected",
+                "error": str(e)
+            }
+        )
 
 @router.post("/stream/{conversation_id}")
 async def multi_agent_stream(
-    #user: user_dependency,
-    conversation_id: str,
-    query: str = Form(...)
-    #conversation_id: Optional[str] = Form(None)
-):
+    #user: user_dependency, 
+    conversation_id: str, 
+    query: str = Form(...)):
     try:
-        user = {"user_id": 1, "email": "test@example.com", "role": "user"}
-        logger.info(f"User: {user}")
-
+        user = {
+            "user_id": 3,
+            "email": "test@example.com",
+            "role": "user"
+        }
         # config = {
         #     "configurable": {
         #         "thread_id": conversation_id,
@@ -70,6 +107,7 @@ async def multi_agent_stream(
         #         "role": user.role
         #     }
         # }
+
         config = {
             "configurable": {
                 "thread_id": conversation_id,

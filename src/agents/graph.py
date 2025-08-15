@@ -3,7 +3,7 @@ from langgraph.prebuilt import create_react_agent
 from langgraph.graph.message import add_messages
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, RemoveMessage
 from typing import TypedDict, List, Annotated
-from langgraph.checkpoint.memory import InMemorySaver
+#from langgraph.checkpoint.memory import InMemorySaver
 from langchain_core.prompts import ChatPromptTemplate
 from src.config.llm import llm
 from src.agents.prompts import ROUTER_PROMPT, RAG_AGENT_PROMPT, SCHEDULE_AGENT_PROMPT, GENERIC_AGENT_PROMPT, ANALYTIC_AGENT_PROMPT, SUMMARIZE_PROMPT
@@ -44,7 +44,7 @@ def summarize_node(state: AgentState) -> AgentState:
         "chat_history": chat_history
     })
 
-    # Xoá tất cả trừ 2 tin nhắn gần đây nhất
+    # Delete all but the 2 most recent messages
     remove_messages = [RemoveMessage(id=m.id) for m in state["messages"][:-2]]
     
     return {
@@ -84,7 +84,7 @@ def router_node(state: AgentState) -> AgentState:
     elif "generic_agent" in route_decision:
         route_decision = "generic_agent"
     else:
-        # Mặc định nếu không rõ
+        # Default to generic if unclear
         route_decision = "generic_agent"
     
     return {
@@ -140,7 +140,6 @@ def schedule_agent_node(state: AgentState) -> AgentState:
     """Schedule agent node for CRUD operations."""
     user_id = state["user_id"]
     
-    # Tạo schedule agent với user_id
     schedule_agent = create_schedule_agent(user_id=user_id)
     
     result = schedule_agent.invoke({"messages": state["messages"]})
@@ -169,7 +168,6 @@ def analytic_agent_node(state: AgentState) -> AgentState:
     """Analytic agent node for learning analytics and advice."""
     user_id = state["user_id"]
     
-    # Tạo analytic agent với user_id
     analytic_agent = create_analytic_agent(user_id=user_id)
     
     result = analytic_agent.invoke({"messages": state["messages"]})
@@ -200,9 +198,9 @@ def create_graph() -> StateGraph:
     graph.add_node("schedule_agent", schedule_agent_node)
     graph.add_node("generic_agent", generic_agent_node)
     graph.add_node("analytic_agent", analytic_agent_node)
-    
+
+    # Add edges
     graph.set_entry_point("summarize_check")
-    
     graph.add_conditional_edges(
         "summarize_check",
         should_summarize,
@@ -211,9 +209,7 @@ def create_graph() -> StateGraph:
             "router": "router"
         }
     )
-    
     graph.add_edge("summarize", "router")
-    
     graph.add_conditional_edges(
         "router",
         route_to_agent,
@@ -224,8 +220,6 @@ def create_graph() -> StateGraph:
             "generic_agent": "generic_agent"
         }
     )
-    
-    # Add edges to end
     graph.add_edge("rag_agent", END)
     graph.add_edge("schedule_agent", END)
     graph.add_edge("analytic_agent", END)

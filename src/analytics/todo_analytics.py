@@ -1,26 +1,38 @@
 """
-Analytics helper functions for todo data analysis.
+Todo analytics functions for todo data analysis.
 """
 
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, case
 from src.config.database import TodoItem
-from .database_helpers import get_completion_percentage, safe_average
-from .date_helpers import get_weekday_name, get_hour_range_string
-from .logger import logger
+from src.utils.database_helpers import get_completion_percentage, safe_average
+from src.utils.date_helpers import get_weekday_name, get_hour_range_string
+from src.utils.logger import logger
+from src.analytics.templates import (
+    PRODUCTIVITY_TEMPLATE, 
+    PATTERNS_TEMPLATE, 
+    COMPLETION_RATE_TEMPLATE, 
+    WORKLOAD_TEMPLATE
+)
 
 
-def analyze_productivity(db: Session, start_date: datetime, end_date: datetime, userId: int,
-                      priority_filter: Optional[str] = None) -> str:
+def analyze_productivity(db: Session, start_date: datetime, end_date: datetime, userId: int) -> str:
     """Analyze productivity metrics and patterns."""
-    logger.info(f"Analyzing productivity from {start_date} to {end_date}, priority filter: {priority_filter}, userId: {userId}")
+    logger.info(f"Analyzing productivity from {start_date} to {end_date}, userId: {userId}")
     
+    # Lấy dữ liệu phân tích
+    data = _get_productivity_data(db, start_date, end_date, userId)
+    
+    # Định dạng dữ liệu theo template
+    return _format_productivity_result(data, start_date, end_date)
+
+
+def _get_productivity_data(db: Session, start_date: datetime, end_date: datetime, userId: int) -> Dict[str, Any]:
+    """Extract productivity data from database."""
     # Total tasks created vs completed
     query = db.query(TodoItem).filter(TodoItem.createdAt >= start_date)
-    if priority_filter:
-        query = query.filter(TodoItem.priority == priority_filter)
     query = query.filter(TodoItem.userId == userId)
     
     total_tasks = query.count()
@@ -68,49 +80,67 @@ def analyze_productivity(db: Session, start_date: datetime, end_date: datetime, 
     
     avg_completion_time = safe_average(completion_times)
     
-    result = f"""📊 PHÂN TÍCH HIỆU SUẤT CÔNG VIỆC ({(end_date - start_date).days} ngày)
+    return {
+        "total_tasks": total_tasks,
+        "completed_tasks": completed_tasks,
+        "overdue_tasks": overdue_tasks,
+        "priority_stats": priority_stats,
+        "avg_completion_time": avg_completion_time
+    }
 
-🎯 TỔNG QUAN:
-• Tổng số task: {total_tasks}
-• Đã hoàn thành: {completed_tasks} ({get_completion_percentage(completed_tasks, total_tasks):.1f}%)
-• Còn lại: {total_tasks - completed_tasks}
-• Quá hạn: {overdue_tasks}
 
-⚡ PHÂN TÍCH THEO ĐỘ ƯU TIÊN:"""
-    
-    for priority, total, completed in priority_stats:
+def _format_productivity_result(data: Dict[str, Any], start_date: datetime, end_date: datetime) -> str:
+    """Format productivity data into readable text using template."""
+    # Xây dựng phần priority stats
+    priority_stats_text = ""
+    for priority, total, completed in data["priority_stats"]:
         completed = completed or 0
         completion_rate = get_completion_percentage(completed, total)
-        result += f"\n• {priority.upper()}: {completed}/{total} ({completion_rate:.1f}%)"
+        priority_stats_text += f"\n• {priority.upper()}: {completed}/{total} ({completion_rate:.1f}%)"
     
-    result += f"\n\n⏱️ THỜI GIAN HOÀN THÀNH TRUNG BÌNH: {avg_completion_time:.1f} giờ"
-    
-    # Productivity insights
-    result += "\n\n💡 NHẬN XÉT VÀ GỢI Ý:"
-    
-    completion_rate = get_completion_percentage(completed_tasks, total_tasks)
+    # Xây dựng insights
+    insights = []
+    completion_rate = get_completion_percentage(data["completed_tasks"], data["total_tasks"])
     
     if completion_rate >= 80:
-        result += "\n✅ Hiệu suất tuyệt vời! Bạn đang quản lý công việc rất tốt."
+        insights.append("Hiệu suất tuyệt vời! Bạn đang quản lý công việc rất tốt.")
     elif completion_rate >= 60:
-        result += "\n👍 Hiệu suất khá tốt, có thể cải thiện thêm một chút."
+        insights.append("Hiệu suất khá tốt, có thể cải thiện thêm một chút.")
     else:
-        result += "\n⚠️ Cần cải thiện hiệu suất. Hãy thử chia nhỏ task và ưu tiên công việc."
+        insights.append("Cần cải thiện hiệu suất. Hãy thử chia nhỏ task và ưu tiên công việc.")
     
-    if total_tasks > 0 and overdue_tasks > total_tasks * 0.2:
-        result += "\n🚨 Có quá nhiều task quá hạn. Nên đặt deadline thực tế hơn."
+    if data["total_tasks"] > 0 and data["overdue_tasks"] > data["total_tasks"] * 0.2:
+        insights.append("Có quá nhiều task quá hạn. Nên đặt deadline thực tế hơn.")
     
-    if avg_completion_time > 48:
-        result += "\n⏰ Task mất quá nhiều thời gian. Hãy chia nhỏ công việc."
+    if data["avg_completion_time"] > 48:
+        insights.append("Task mất quá nhiều thời gian. Hãy chia nhỏ công việc.")
     
-    logger.debug(f"Productivity analysis completed. Total tasks: {total_tasks}, Completed: {completed_tasks}")
-    return result
+    # Áp dụng template
+    return PRODUCTIVITY_TEMPLATE.format(
+        days=(end_date - start_date).days,
+        total_tasks=data["total_tasks"],
+        completed_tasks=data["completed_tasks"],
+        completion_percentage=get_completion_percentage(data["completed_tasks"], data["total_tasks"]),
+        remaining_tasks=data["total_tasks"] - data["completed_tasks"],
+        overdue_tasks=data["overdue_tasks"],
+        priority_stats=priority_stats_text,
+        avg_completion_time=data["avg_completion_time"],
+        insights="\n".join(insights)
+    )
 
 
-def analyze_patterns(db: Session, start_date: datetime, end_date: datetime, userId: int,
-                   priority_filter: Optional[str] = None) -> str:
+def analyze_patterns(db: Session, start_date: datetime, end_date: datetime, userId: int) -> str:
     """Analyze behavioral patterns in task management."""
     
+    # Lấy dữ liệu phân tích
+    data = _get_patterns_data(db, start_date, end_date, userId)
+    
+    # Định dạng dữ liệu theo template
+    return _format_patterns_result(data, start_date, end_date)
+
+
+def _get_patterns_data(db: Session, start_date: datetime, end_date: datetime, userId: int) -> Dict[str, Any]:
+    """Extract pattern data from database."""
     # Creation patterns by day of week
     weekday_query = db.query(
         func.extract('dow', TodoItem.createdAt).label('weekday'),
@@ -129,20 +159,29 @@ def analyze_patterns(db: Session, start_date: datetime, end_date: datetime, user
     
     tasks_by_hour = hour_query.group_by('hour').all()
     
-    result = f"""🔍 PHÂN TÍCH PATTERN CÔNG VIỆC ({(end_date - start_date).days} ngày)
-
-📅 PATTERN TẠO TASK THEO NGÀY TRONG TUẦN:"""
-    
     weekday_data = {int(day): count for day, count in tasks_by_weekday}
+    hour_data = {int(hour): count for hour, count in tasks_by_hour}
     
+    return {
+        "weekday_data": weekday_data,
+        "hour_data": hour_data
+    }
+
+
+def _format_patterns_result(data: Dict[str, Any], start_date: datetime, end_date: datetime) -> str:
+    """Format pattern data into readable text using template."""
+    weekday_data = data["weekday_data"]
+    hour_data = data["hour_data"]
+    
+    # Tạo weekday patterns text
+    weekday_patterns = ""
     for i in range(7):
         count = weekday_data.get(i, 0)
         day_name = get_weekday_name(i)
-        result += f"\n• {day_name}: {count} task"
+        weekday_patterns += f"\n• {day_name}: {count} task"
     
-    result += "\n\n🕐 PATTERN TẠO TASK THEO GIỜ:"
-    hour_data = {int(hour): count for hour, count in tasks_by_hour}
-    
+    # Tạo hourly patterns text
+    hourly_patterns = ""
     peak_hours = []
     max_count = max(hour_data.values()) if hour_data else 0
     
@@ -150,33 +189,49 @@ def analyze_patterns(db: Session, start_date: datetime, end_date: datetime, user
         count = hour_data.get(hour, 0)
         if count > 0:
             hour_range = get_hour_range_string(hour)
-            result += f"\n• {hour_range}: {count} task"
+            hourly_patterns += f"\n• {hour_range}: {count} task"
             if count >= max_count * 0.7:  # Peak hours
                 peak_hours.append(f"{hour:02d}:00")
     
-    result += f"\n\n🔥 GIỜ VÀNG TẠO TASK: {', '.join(peak_hours) if peak_hours else 'Không có pattern rõ ràng'}"
-
-    # Pattern insights
-    result += "\n\n💡 NHẬN XÉT PATTERN:"
+    # Tạo peak hours text
+    peak_hours_text = ', '.join(peak_hours) if peak_hours else 'Không có pattern rõ ràng'
+    
+    # Tạo pattern insights
+    pattern_insights = ""
     
     # Find most productive day
     if weekday_data:
         most_productive_day = max(weekday_data.items(), key=lambda x: x[1])
         day_name = get_weekday_name(most_productive_day[0])
-        result += f"\n📈 Ngày tạo task nhiều nhất: {day_name}"
+        pattern_insights += f"\nNgày tạo task nhiều nhất: {day_name}"
     
     # Find peak hour
     if hour_data:
         peak_hour = max(hour_data.items(), key=lambda x: x[1])
-        result += f"\n⏰ Giờ tạo task nhiều nhất: {peak_hour[0]:02d}:00"
+        pattern_insights += f"\nGiờ tạo task nhiều nhất: {peak_hour[0]:02d}:00"
     
-    return result
+    # Áp dụng template
+    return PATTERNS_TEMPLATE.format(
+        days=(end_date - start_date).days,
+        weekday_patterns=weekday_patterns,
+        hourly_patterns=hourly_patterns,
+        peak_hours=peak_hours_text,
+        pattern_insights=pattern_insights
+    )
 
 
-def analyze_completion_rate(db: Session, start_date: datetime, end_date: datetime, userId: int,
-                        priority_filter: Optional[str] = None) -> str:
+def analyze_completion_rate(db: Session, start_date: datetime, end_date: datetime, userId: int) -> str:
     """Analyze task completion rates and trends."""
     
+    # Lấy dữ liệu phân tích
+    data = _get_completion_rate_data(db, start_date, end_date, userId)
+    
+    # Định dạng dữ liệu theo template
+    return _format_completion_rate_result(data, start_date, end_date)
+
+
+def _get_completion_rate_data(db: Session, start_date: datetime, end_date: datetime, userId: int) -> Dict[str, Any]:
+    """Extract completion rate data from database."""
     # Weekly completion trends
     weekly_stats = []
     current_date = start_date
@@ -190,9 +245,6 @@ def analyze_completion_rate(db: Session, start_date: datetime, end_date: datetim
                 TodoItem.createdAt < week_end
             )
         )
-        
-        if priority_filter:
-            week_query = week_query.filter(TodoItem.priority == priority_filter)
         
         week_query = week_query.filter(TodoItem.userId == userId)
         
@@ -218,41 +270,65 @@ def analyze_completion_rate(db: Session, start_date: datetime, end_date: datetim
     
     priority_completion = priority_query.group_by(TodoItem.priority).all()
     
-    result = f"""📈 PHÂN TÍCH TỶ LỆ HOÀN THÀNH ({(end_date - start_date).days} ngày)
+    return {
+        "weekly_stats": weekly_stats,
+        "priority_completion": priority_completion
+    }
 
-📊 XU HƯỚNG THEO TUẦN:"""
+
+def _format_completion_rate_result(data: Dict[str, Any], start_date: datetime, end_date: datetime) -> str:
+    """Format completion rate data into readable text using template."""
+    weekly_stats = data["weekly_stats"]
+    priority_completion = data["priority_completion"]
     
+    # Tạo weekly trends text
+    weekly_trends = ""
     for week in weekly_stats:
-        result += f"\n• Tuần {week['week_start']}: {week['completed']}/{week['total']} ({week['rate']:.1f}%)"
+        weekly_trends += f"\n• Tuần {week['week_start']}: {week['completed']}/{week['total']} ({week['rate']:.1f}%)"
     
-    result += "\n\n🎯 TỶ LỆ HOÀN THÀNH THEO ƯU TIÊN:"
-    
+    # Tạo priority completion text
+    priority_completion_text = ""
     for priority, total, completed in priority_completion:
         completed = completed or 0
         rate = get_completion_percentage(completed, total)
-        result += f"\n• {priority.upper()}: {completed}/{total} ({rate:.1f}%)"
+        priority_completion_text += f"\n• {priority.upper()}: {completed}/{total} ({rate:.1f}%)"
     
-    # Trend analysis
+    # Tạo trend analysis text
+    trend_analysis = ""
     if len(weekly_stats) >= 2:
         recent_rate = weekly_stats[-1]['rate']
         previous_rate = weekly_stats[-2]['rate']
         trend = recent_rate - previous_rate
         
-        result += f"\n\n📊 XU HƯỚNG GẦN ĐÂY:"
+        trend_analysis = "XU HƯỚNG GẦN ĐÂY:"
         if trend > 5:
-            result += f"\n📈 Hiệu suất đang cải thiện (+{trend:.1f}%)"
+            trend_analysis += f"\nHiệu suất đang cải thiện (+{trend:.1f}%)"
         elif trend < -5:
-            result += f"\n📉 Hiệu suất đang giảm ({trend:.1f}%)"
+            trend_analysis += f"\nHiệu suất đang giảm ({trend:.1f}%)"
         else:
-            result += f"\n➡️ Hiệu suất ổn định ({trend:+.1f}%)"
+            trend_analysis += f"\nHiệu suất ổn định ({trend:+.1f}%)"
     
-    return result
+    # Áp dụng template
+    return COMPLETION_RATE_TEMPLATE.format(
+        days=(end_date - start_date).days,
+        weekly_trends=weekly_trends,
+        priority_completion=priority_completion_text,
+        trend_analysis=trend_analysis
+    )
 
 
-def analyze_workload(db: Session, start_date: datetime, end_date: datetime, userId: int,
-                  priority_filter: Optional[str] = None) -> str:
+def analyze_workload(db: Session, start_date: datetime, end_date: datetime, userId: int) -> str:
     """Analyze workload distribution and balance."""
     
+    # Lấy dữ liệu phân tích
+    data = _get_workload_data(db, start_date, end_date, userId)
+    
+    # Định dạng dữ liệu theo template
+    return _format_workload_result(data, start_date, end_date)
+
+
+def _get_workload_data(db: Session, start_date: datetime, end_date: datetime, userId: int) -> Dict[str, Any]:
+    """Extract workload data from database."""
     # Daily task creation
     daily_query = db.query(
         func.date(TodoItem.createdAt).label('date'),
@@ -293,50 +369,77 @@ def analyze_workload(db: Session, start_date: datetime, end_date: datetime, user
     
     total_tasks = total_query.count()
     
-    result = f"""⚖️ PHÂN TÍCH KHỐI LƯỢNG CÔNG VIỆC ({(end_date - start_date).days} ngày)
-
-📅 PHÂN BỐ TẠO TASK HÀNG NGÀY:"""
-    
+    # Creation counts
     creation_counts = [count for _, count in daily_creation]
+    
+    return {
+        "daily_creation": daily_creation,
+        "pending_by_priority": pending_by_priority,
+        "tasks_with_due_dates": tasks_with_due_dates,
+        "total_tasks": total_tasks,
+        "creation_counts": creation_counts
+    }
+
+
+def _format_workload_result(data: Dict[str, Any], start_date: datetime, end_date: datetime) -> str:
+    """Format workload data into readable text using template."""
+    daily_creation = data["daily_creation"]
+    pending_by_priority = data["pending_by_priority"]
+    tasks_with_due_dates = data["tasks_with_due_dates"]
+    total_tasks = data["total_tasks"]
+    creation_counts = data["creation_counts"]
+    
+    # Tạo daily distribution text
+    daily_distribution = ""
     if creation_counts:
         avg_daily = safe_average(creation_counts)
         max_daily = max(creation_counts)
-        result += f"\n• Trung bình: {avg_daily:.1f} task/ngày"
-        result += f"\n• Cao nhất: {max_daily} task/ngày"
+        daily_distribution += f"\n• Trung bình: {avg_daily:.1f} task/ngày"
+        daily_distribution += f"\n• Cao nhất: {max_daily} task/ngày"
         
         # Show recent days
-        result += "\n• 7 ngày gần nhất:"
+        daily_distribution += "\n• 7 ngày gần nhất:"
         for date, count in daily_creation[-7:]:
-            result += f"\n  - {date}: {count} task"
+            daily_distribution += f"\n  - {date}: {count} task"
     
-    result += f"\n\n📋 CÔNG VIỆC ĐANG PENDING:"
+    # Tạo pending tasks text
+    pending_tasks = ""
     pending_total = 0
     for priority, count in pending_by_priority:
-        result += f"\n• {priority.upper()}: {count} task"
+        pending_tasks += f"\n• {priority.upper()}: {count} task"
         pending_total += count
     
-    result += f"\n• TỔNG: {pending_total} task"
+    pending_tasks += f"\n• TỔNG: {pending_total} task"
     
+    # Tính deadline percentage
     deadline_percentage = get_completion_percentage(tasks_with_due_dates, total_tasks)
-    result += f"\n\n⏰ TASK CÓ DEADLINE: {tasks_with_due_dates}/{total_tasks} ({deadline_percentage:.1f}%)"
     
-    # Workload insights
-    result += "\n\n💡 ĐÁNH GIÁ KHỐI LƯỢNG CÔNG VIỆC:"
+    # Tạo workload insights
+    workload_insights = ""
     
     if pending_total > 20:
-        result += "\n🚨 Khối lượng công việc quá tải! Cần ưu tiên và loại bỏ task không cần thiết."
+        workload_insights += "\nKhối lượng công việc quá tải! Cần ưu tiên và loại bỏ task không cần thiết."
     elif pending_total > 10:
-        result += "\n⚠️ Khối lượng công việc khá nhiều. Nên tập trung vào task ưu tiên cao."
+        workload_insights += "\nKhối lượng công việc khá nhiều. Nên tập trung vào task ưu tiên cao."
     else:
-        result += "\n✅ Khối lượng công việc hợp lý, có thể quản lý tốt."
+        workload_insights += "\nKhối lượng công việc hợp lý, có thể quản lý tốt."
     
     if creation_counts and max(creation_counts) > safe_average(creation_counts) * 2:
-        result += "\n📊 Có ngày tạo quá nhiều task. Nên phân bổ đều hơn."
+        workload_insights += "\nCó ngày tạo quá nhiều task. Nên phân bổ đều hơn."
     
     if deadline_percentage < 30:
-        result += "\n📅 Nên đặt deadline cho nhiều task hơn để quản lý thời gian tốt hơn."
+        workload_insights += "\nNên đặt deadline cho nhiều task hơn để quản lý thời gian tốt hơn."
     
-    return result
+    # Áp dụng template
+    return WORKLOAD_TEMPLATE.format(
+        days=(end_date - start_date).days,
+        daily_distribution=daily_distribution,
+        pending_tasks=pending_tasks,
+        tasks_with_due_dates=tasks_with_due_dates,
+        total_tasks=total_tasks,
+        deadline_percentage=deadline_percentage,
+        workload_insights=workload_insights
+    )
 
 
 def get_analytics_summary(db: Session, start_date: datetime, end_date: datetime, userId: int) -> Dict[str, Any]:

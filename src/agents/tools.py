@@ -1,12 +1,12 @@
 from langchain_core.tools import tool
 from pydantic import Field, BaseModel
-from datetime import datetime, timedelta
-from typing import Optional, List, Dict, Any
+from datetime import datetime
+from typing import Optional
 from sqlalchemy.orm import Session
-from src.config.database import get_db, TodoItem, SessionLocal
+from src.config.database import TodoItem, SessionLocal
 from src.config.vector_store import vector_store_crud
 from langchain_tavily import TavilySearch
-from src.utils.analytics_helpers import (
+from src.analytics.todo_analytics import (
     analyze_productivity,
     analyze_patterns,
     analyze_completion_rate,
@@ -48,7 +48,6 @@ class TodoAnalyticsInput(BaseModel):
     """Input for todo analytics tool."""
     analysis_type: str = Field(description="Type of analysis: 'productivity', 'patterns', 'completion_rate', 'workload'")
     days_back: Optional[int] = Field(default=30, description="Number of days to analyze")
-    priority_filter: Optional[str] = Field(default=None, description="Filter by priority: low, medium, high")
     userId: int = Field(description="User ID")
 
 @tool
@@ -129,7 +128,7 @@ def create_todo(input: TodoInput) -> str:
 
 @tool
 def get_todos(userId: int) -> str:
-    """Get all todo items for a specific user.
+    """Get all todo items for a specific user from current date to future.
     
     Args:
         userId: User ID for filtering todos (required)
@@ -140,7 +139,13 @@ def get_todos(userId: int) -> str:
     try:
         db = SessionLocal()
         
-        query = db.query(TodoItem).filter(TodoItem.userId == userId)
+        # Lấy ngày hiện tại và đặt giờ về 00:00:00
+        current_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        # Lọc todo theo userId và chỉ lấy các todo có deadline từ ngày hiện tại trở đi hoặc không có deadline
+        query = db.query(TodoItem).filter(TodoItem.userId == userId,
+            ((TodoItem.deadline.is_(None)) | (TodoItem.deadline >= current_date))
+        )
         todos = query.all()
         
         if not todos:
@@ -266,13 +271,13 @@ def todo_analytics(input: TodoAnalyticsInput) -> str:
         
         # Use analytics helpers from utils with user filtering
         if input.analysis_type == "productivity":
-            return analyze_productivity(db, start_date, end_date, input.userId, input.priority_filter)
+            return analyze_productivity(db, start_date, end_date, input.userId)
         elif input.analysis_type == "patterns":
-            return analyze_patterns(db, start_date, end_date, input.userId, input.priority_filter)
+            return analyze_patterns(db, start_date, end_date, input.userId)
         elif input.analysis_type == "completion_rate":
-            return analyze_completion_rate(db, start_date, end_date, input.userId, input.priority_filter)
+            return analyze_completion_rate(db, start_date, end_date, input.userId)
         elif input.analysis_type == "workload":
-            return analyze_workload(db, start_date, end_date, input.userId, input.priority_filter)
+            return analyze_workload(db, start_date, end_date, input.userId)
         else:
             return "Invalid analysis type. Available types: productivity, patterns, completion_rate, workload"
     

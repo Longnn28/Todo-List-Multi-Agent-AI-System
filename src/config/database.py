@@ -21,10 +21,10 @@ class TodoItem(Base):
     userId = Column(Integer, nullable=False, index=True)
     title = Column(String, nullable=False)
     description = Column(Text, nullable=True)
-    status = Column(String, default="pending", index=True)  # pending, done, cancelled
+    status = Column(String, default="pending", index=True)  # pending, done, cancelled, overdue
     priority = Column(String, default="medium", index=True)  # low, medium, high
     deadline = Column(DateTime, nullable=True, index=True)
-    category = Column(String, default="personal", index=True)
+    category = Column(String, default="personal", index=True) # personal, work, study
     createdAt = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     updatedAt = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

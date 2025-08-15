@@ -10,15 +10,15 @@ load_dotenv()
 
 class VectorStoreCRUD:
     def __init__(self, k: int = 3, score_threshold: float = 0.3) -> VectorStore:
-        self.embeddings = HuggingFaceEmbeddings(
-            model_name="Alibaba-NLP/gte-multilingual-base",
-            model_kwargs={
-                'device': 'cpu',  # Dùng 'cuda' nếu có GPU
-                'trust_remote_code': True  # Required for Alibaba GTE models
-            },
-            encode_kwargs={'normalize_embeddings': True}  # Normalize embeddings
-        )
-        #self.embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+        # self.embeddings = HuggingFaceEmbeddings(
+        #     model_name="Alibaba-NLP/gte-multilingual-base",
+        #     model_kwargs={
+        #         'device': 'cpu',  # Dùng 'cuda' nếu có GPU
+        #         'trust_remote_code': True  # Required for Alibaba GTE models
+        #     },
+        #     encode_kwargs={'normalize_embeddings': True}  # Normalize embeddings
+        # )
+        self.embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
         self.vector_store = PineconeVectorStore(
             index_name="school-info",
             embedding=self.embeddings

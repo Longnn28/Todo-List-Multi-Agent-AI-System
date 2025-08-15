@@ -11,9 +11,8 @@ logger.py
 chat_test.html
 test_chat_stream.py
 graph.png
-websocket_router.py
-websocket_chat_demo.html
 embedding_faq.py
 embedding_hb.py
 embedding_tuition.py
-test.ipynb
+embedding_regu.py
+test_docs.ipynb
