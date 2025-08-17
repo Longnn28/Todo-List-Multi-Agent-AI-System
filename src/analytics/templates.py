@@ -1,7 +1,3 @@
-"""
-Templates for analytics functions.
-"""
-
 # Template for productivity analysis
 PRODUCTIVITY_TEMPLATE = """PHÂN TÍCH HIỆU SUẤT CÔNG VIỆC ({days} ngày)
 

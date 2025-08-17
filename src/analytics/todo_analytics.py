@@ -1,15 +1,10 @@
-"""
-Todo analytics functions for todo data analysis.
-"""
-
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, case
 from src.config.database import TodoItem
 from src.utils.database_helpers import get_completion_percentage, safe_average
 from src.utils.date_helpers import get_weekday_name, get_hour_range_string
-from src.utils.logger import logger
 from src.analytics.templates import (
     PRODUCTIVITY_TEMPLATE, 
     PATTERNS_TEMPLATE, 
@@ -20,7 +15,6 @@ from src.analytics.templates import (
 
 def analyze_productivity(db: Session, start_date: datetime, end_date: datetime, userId: int) -> str:
     """Analyze productivity metrics and patterns."""
-    logger.info(f"Analyzing productivity from {start_date} to {end_date}, userId: {userId}")
     
     # Lấy dữ liệu phân tích
     data = _get_productivity_data(db, start_date, end_date, userId)
@@ -449,7 +443,6 @@ def get_analytics_summary(db: Session, start_date: datetime, end_date: datetime,
     Returns:
         Dictionary with key metrics
     """
-    logger.info(f"Generating analytics summary from {start_date} to {end_date}, userId: {userId}")
     
     # Total tasks
     total_query = db.query(TodoItem).filter(TodoItem.createdAt >= start_date)
@@ -504,5 +497,4 @@ def get_analytics_summary(db: Session, start_date: datetime, end_date: datetime,
         "analysis_period_days": (end_date - start_date).days
     }
     
-    logger.debug(f"Analytics summary generated: {result}")
     return result

@@ -2,9 +2,10 @@ from typing import Annotated
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field, EmailStr
 import jwt
 import requests
-from pydantic import BaseModel, Field, EmailStr
+import os
 
 security = HTTPBearer()
 
@@ -30,7 +31,7 @@ async def get_current_user(
 
         if not user_id:
             raise HTTPException(status_code=401, detail="Invalid token - missing user ID")
-        url = "http://103.81.87.99:8080/identity/auth/introspect"
+        url = os.getenv("AUTH_SERVICE_URL")
         headers = {"accept": "*/*", "Content-Type": "application/json"}
         payload = {"token": token}
 

@@ -68,7 +68,7 @@ def rag_retrieve(input: RAGInput) -> str:
 def tavily_search(input: TavilySearchInput) -> str:
     """Search the web using Tavily for current information."""
     try:
-        tavily_tool = TavilySearch(max_results=input.max_results)
+        tavily_tool = TavilySearch(max_results=input.max_results, time_range="day")
         tool_msg = tavily_tool.invoke({"query": input.query})
         
         if tool_msg:

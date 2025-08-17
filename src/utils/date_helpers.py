@@ -1,7 +1,3 @@
-"""
-Date and time helper functions for handling datetime operations.
-"""
-
 from datetime import datetime, timedelta, timezone
 from typing import Tuple
 

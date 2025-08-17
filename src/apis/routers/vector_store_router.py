@@ -1,9 +1,7 @@
 from src.config.vector_store import vector_store_crud
 from typing import List
-from fastapi import APIRouter, Query, UploadFile, File, status
+from fastapi import APIRouter, Query, UploadFile, File
 from pydantic import Field, BaseModel
-from src.utils.logger import logger
-from fastapi.responses import JSONResponse
 from langchain_community.document_loaders import PyMuPDFLoader
 from langchain_community.document_loaders import UnstructuredWordDocumentLoader
 from langchain_community.document_loaders import TextLoader
@@ -18,17 +16,13 @@ router = APIRouter(prefix="/vector-store", tags=["Vector Store"])
 
 @router.get("/get-documents")
 async def get_documents():
-    logger.info("Fetching all documents from vector store")
     documents = await vector_store_crud.get_documents()
-    logger.debug(f"Retrieved {len(documents)} documents")
     return [doc.__dict__ for doc in documents]
 
 
 @router.get("/search")
 async def search(query: str):
-    logger.info(f"Searching vector store with query: {query}")
     documents = await vector_store_crud.search(query)
-    logger.debug(f"Search returned {len(documents)} results")
     return [doc.__dict__ for doc in documents]
 
 
@@ -49,8 +43,6 @@ async def add_documents(
     
     for file in files:
         try:
-            logger.info(f"Processing and indexing file: {file.filename}")
-
             temp_dir = tempfile.mkdtemp()
             temp_file_path = os.path.join(temp_dir, file.filename)
 
@@ -89,7 +81,6 @@ async def add_documents(
             )
 
         except Exception as e:
-            logger.error(f"Error processing file {file.filename}: {str(e)}")
             responses.append(
                 FileIngressResponse(
                     file_path=file.filename if file else "unknown",
@@ -104,12 +95,10 @@ async def add_documents(
 
 @router.delete("/delete-documents")
 async def delete_documents(filenames: List[str] = Query(None)):
-    logger.info(f"Request to delete documents by filenames: {filenames}")
     document_data = await vector_store_crud.get_documents()
     
     if not filenames:
         # If no filenames provided, delete all documents
-        logger.warning("No filenames provided, deleting all documents")
         document_ids = [doc.id for doc in document_data]
         await vector_store_crud.delete_documents(ids=document_ids)
         return {"message": f"Deleted all {len(document_ids)} documents"}
@@ -121,12 +110,10 @@ async def delete_documents(filenames: List[str] = Query(None)):
             docs_to_delete.append(doc)
     
     if not docs_to_delete:
-        logger.warning(f"No documents found with filenames: {filenames}")
         return {"message": "No matching documents found to delete"}
     
     # Extract IDs of documents to delete
     delete_ids = [doc.id for doc in docs_to_delete]
-    logger.info(f"Deleting {len(delete_ids)} chunks from {len(set([doc.metadata.get('source') for doc in docs_to_delete]))} files")
     
     await vector_store_crud.delete_documents(ids=delete_ids)
     return {

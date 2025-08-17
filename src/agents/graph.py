@@ -3,7 +3,6 @@ from langgraph.prebuilt import create_react_agent
 from langgraph.graph.message import add_messages
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, RemoveMessage
 from typing import TypedDict, List, Annotated
-#from langgraph.checkpoint.memory import InMemorySaver
 from langchain_core.prompts import ChatPromptTemplate
 from src.config.llm import llm
 from src.agents.prompts import ROUTER_PROMPT, RAG_AGENT_PROMPT, SCHEDULE_AGENT_PROMPT, GENERIC_AGENT_PROMPT, ANALYTIC_AGENT_PROMPT, SUMMARIZE_PROMPT
@@ -31,7 +30,7 @@ def summarize_node(state: AgentState) -> AgentState:
     messages = state["messages"]
     summary = state.get("summary", "")
 
-    # Tạo chat history từ tất cả messages
+    # Create chat history
     chat_history = f"Summarized conversation:\n{summary}\n"
     for msg in messages:
         role = "User" if isinstance(msg, HumanMessage) else "Assistant"
@@ -56,11 +55,11 @@ def summarize_node(state: AgentState) -> AgentState:
 
 def router_node(state: AgentState) -> AgentState:
     """Router agent to decide which agent should handle the request."""
-    # Lấy user input từ message cuối cùng
+    # Get user input from the last message
     user_input = state["messages"][-1].content
     messages = state["messages"]
-    
-    # Lấy message AI cuối cùng để tạo chat history
+
+    # Get the last AI message to create chat history
     last_ai_message = ""
     if len(messages) >= 2:
         last_ai_message += f"Assistant: {messages[-2].content}"
