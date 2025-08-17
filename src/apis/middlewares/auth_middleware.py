@@ -6,6 +6,9 @@ from pydantic import BaseModel, Field, EmailStr
 import jwt
 import requests
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 security = HTTPBearer()
 
