@@ -9,5 +9,3 @@ unit_tests/
 langgraph.json
 logger.py
 chat_test.html
-test_docs.ipynb
-test_multi_file.py

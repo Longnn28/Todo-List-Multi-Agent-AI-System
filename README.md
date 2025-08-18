@@ -148,6 +148,6 @@ All prompts are defined in `src/agents/prompts.py` and can be customized:
 
 ## 📄 License
 
-This project is released under MIT License. See [LICENSE](LICENSE) file for more details.
+This project is released under MIT License.
 
 **Developed by Syntax Error team.**
